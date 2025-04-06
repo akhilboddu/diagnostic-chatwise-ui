@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, MessageSquare, Plus, RefreshCw, User, Bot, FileJson, Copy, Check, Database } from 'lucide-react';
+import { FileText, MessageSquare, Plus, RefreshCw, User, Bot, FileJson, Copy, Check, Database, Monitor } from 'lucide-react';
 import AgentManager from './components/AgentManager';
 import FileUpload from './components/FileUpload';
 import JSONUpload from './components/JSONUpload';
 import ChatInterface from './components/ChatInterface';
 import KnowledgeBaseViewer from './components/KnowledgeBaseViewer';
+import HumanAgentDesk from './components/HumanAgentDesk';
 
 interface KBInfo {
   kb_id: string;
@@ -16,6 +18,18 @@ interface KBInfo {
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<MainApp />} />
+        <Route path="/human-desk" element={<HumanAgentDeskWrapper />} />
+      </Routes>
+    </Router>
+  );
+}
+
+// Wrapper for the main application content
+const MainApp: React.FC = () => {
   const [kbs, setKbs] = useState<KBInfo[]>([]);
   const [selectedKbId, setSelectedKbId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -77,9 +91,14 @@ function App() {
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <div className="flex items-center justify-center mb-6">
-          <Bot className="h-8 w-8 text-blue-500 mr-2" />
-          <h1 className="text-xl font-bold text-gray-800">Diagnostic AI</h1>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <Bot className="h-8 w-8 text-blue-500 mr-2" />
+            <h1 className="text-xl font-bold text-gray-800">Diagnostic AI</h1>
+          </div>
+          <Link to="/human-desk" title="Human Agent Desk" className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <Monitor className="h-5 w-5 text-gray-600" />
+          </Link>
         </div>
         
         <div className="mb-4">
@@ -281,6 +300,11 @@ function App() {
       </motion.div>
     </div>
   );
-}
+};
+
+// Wrapper component for HumanAgentDesk to pass backend URL
+const HumanAgentDeskWrapper: React.FC = () => {
+  return <HumanAgentDesk backendUrl={BACKEND_URL} />;
+};
 
 export default App;
