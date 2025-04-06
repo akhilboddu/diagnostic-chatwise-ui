@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { MessageSquare, AlertCircle, Send, Inbox, Filter, CheckCircle, User, Bot, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MessageSquare, AlertCircle, Send, Inbox, Filter, CheckCircle, User, Bot, UserCheck, CornerDownLeft, PlusSquare, X, BookPlus } from 'lucide-react';
 
 // Updated Conversation interface to match the API response structure
 interface ConversationDetails {
@@ -43,10 +43,18 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'attention'>('all');
   const [responseText, setResponseText] = useState<string>('');
-  const [updateKb, setUpdateKb] = useState<boolean>(false);
-  const [kbUpdateText, setKbUpdateText] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
   const [showSuccess, setShowSuccess] = useState<boolean>(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // --- State for KB Drawer --- 
+  const [isKbDrawerOpen, setIsKbDrawerOpen] = useState<boolean>(false);
+  const [selectedMessageText, setSelectedMessageText] = useState<string>('');
+  const [kbEditText, setKbEditText] = useState<string>('');
+  const [isSavingToKb, setIsSavingToKb] = useState<boolean>(false);
+  const [kbSaveError, setKbSaveError] = useState<string | null>(null);
+  const [showKbSaveSuccess, setShowKbSaveSuccess] = useState<boolean>(false);
+  // --- End KB Drawer State ---
 
   const fetchConversations = useCallback(async () => {
     setIsLoadingConversations(true);
@@ -119,25 +127,17 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
     setSelectedConversationId(kbId);
     // Reset response form when changing conversation
     setResponseText('');
-    setUpdateKb(false);
-    setKbUpdateText('');
   };
 
-  const handleSendResponse = async () => {
+  const handleSendResponse = useCallback(async () => {
     if (!selectedConversationId || !responseText.trim()) return;
 
     setIsSending(true);
     setError(null);
     try {
-      // Choose endpoint and payload based on whether we're updating KB
-      const endpoint = updateKb ? 'human_response' : 'human-chat';
-      const payload = updateKb ? {
-        human_response: responseText,
-        update_kb: true,
-        kb_update_text: kbUpdateText.trim() || responseText,
-      } : {
-        message: responseText
-      };
+      // Always use human-chat endpoint now
+      const endpoint = 'human-chat';
+      const payload = { message: responseText };
 
       const response = await fetch(`${backendUrl}/agents/${selectedConversationId}/${endpoint}`, {
         method: 'POST',
@@ -161,8 +161,6 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
       
       // Clear form and show success message
       setResponseText('');
-      setUpdateKb(false);
-      setKbUpdateText('');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
 
@@ -172,6 +170,27 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
     } finally {
       setIsSending(false);
     }
+  }, [responseText, selectedConversationId, backendUrl, fetchConversationHistory, fetchConversations]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendResponse();
+    }
+  };
+
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      // Limit max height, e.g., 150px
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'; 
+    }
+  };
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setResponseText(e.target.value);
+    adjustTextareaHeight();
   };
 
   const filteredConversations = conversations.filter(conv => 
@@ -187,8 +206,64 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
     }
   };
 
+  // --- KB Drawer Functions --- 
+  const handleOpenKbDrawer = (messageText: string | null = null) => {
+    setSelectedMessageText(messageText || '');
+    setKbEditText(messageText || '');
+    setIsKbDrawerOpen(true);
+    setKbSaveError(null);
+    setShowKbSaveSuccess(false);
+  };
+
+  const handleCloseKbDrawer = () => {
+    setIsKbDrawerOpen(false);
+  };
+
+  const handleSaveToKb = async () => {
+    if (!selectedConversationId || !kbEditText.trim()) {
+      setKbSaveError('KB text cannot be empty.');
+      return;
+    }
+
+    setIsSavingToKb(true);
+    setKbSaveError(null);
+    setShowKbSaveSuccess(false);
+
+    try {
+      const payload = {
+        knowledge_text: kbEditText.trim(),
+      };
+
+      const response = await fetch(`${backendUrl}/agents/${selectedConversationId}/human-knowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}. ${errorText || 'Failed to save to KB'}`);
+      }
+      
+      // Show success feedback in drawer
+      setShowKbSaveSuccess(true);
+      setTimeout(() => {
+        handleCloseKbDrawer();
+      }, 1500);
+
+    } catch (err: any) {
+      setKbSaveError(err.message || 'An unknown error occurred while saving.');
+      console.error("Save to KB error:", err);
+    } finally {
+      setIsSavingToKb(false);
+    }
+  };
+  // --- End KB Drawer Functions --- 
+
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gray-100 relative overflow-hidden">
       {/* Left Sidebar (Conversation List) */}
       <motion.div
         className="w-80 bg-white border-r border-gray-200 flex flex-col"
@@ -260,7 +335,7 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
         {selectedConversationId ? (
           <>
             {/* Conversation Display */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50 relative">
               {isLoadingHistory ? (
                 <div className="text-center text-gray-500 py-10">Loading history...</div>
               ) : conversationHistory.length === 0 ? (
@@ -274,7 +349,7 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
                       {msg.sender === 'ai' && <Bot className="h-6 w-6 text-blue-500 flex-shrink-0 mt-1" />}
                       {msg.sender === 'human_agent' && <UserCheck className="h-6 w-6 text-green-600 flex-shrink-0 mt-1" />}
                       <div 
-                        className={`relative max-w-xl px-4 py-2.5 rounded-xl shadow-sm 
+                        className={`relative max-w-xl px-4 py-2.5 rounded-xl shadow-sm group 
                           ${msg.sender === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 
                             (msg.sender === 'human_agent' ? 'bg-green-100 text-green-900 rounded-bl-none' : 
                              'bg-white text-gray-800 rounded-bl-none')}
@@ -283,6 +358,23 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
                         {isHandoffMessage && <AlertCircle className="absolute -top-1.5 -left-1.5 h-3.5 w-3.5 text-orange-500 bg-white rounded-full" />}
                         <p className={`text-sm leading-relaxed ${isHandoffMessage ? 'text-orange-900' : ''}`}>{msg.text}</p>
                         <span className={`text-[11px] opacity-70 block mt-1.5 ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>{formatTimestamp(msg.timestamp)}</span>
+
+                        {/* Action Buttons Container - appears on hover */} 
+                        <div className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 
+                          ${msg.sender === 'user' ? 'left-0 -translate-x-full pr-2' : 'right-0 translate-x-full pl-2'}`}>
+                          {/* Add to KB Button */} 
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenKbDrawer(msg.text);
+                            }}
+                            className="text-gray-400 hover:text-purple-600 p-1.5 rounded-full bg-white hover:bg-purple-50 shadow-sm border border-gray-200"
+                            title="Add to Knowledge Base"
+                          >
+                            <PlusSquare className="h-3.5 w-3.5" />
+                          </button>
+                           {/* Add other buttons like Copy here if desired */} 
+                        </div>
                       </div>
                       {msg.sender === 'user' && <User className="h-6 w-6 text-gray-400 flex-shrink-0 mt-1" />}
                     </div>
@@ -292,11 +384,11 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
             </div>
 
             {/* Response Interface */}
-            <div className="p-4 bg-white border-t border-gray-200 space-y-3">
+            <div className="p-4 bg-white border-t border-gray-200">
               {/* Success Message Indicator */} 
               {showSuccess && (
                 <motion.div 
-                  className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm flex items-center shadow-sm"
+                  className="mb-3 p-3 bg-green-50 border border-green-200 text-green-700 rounded-md text-sm flex items-center shadow-sm"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
@@ -307,58 +399,53 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
                 </motion.div>
               )}
 
-              <textarea
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 resize-none transition duration-150 ease-in-out text-sm"
-                rows={3}
-                placeholder="Response to User..."
-                value={responseText}
-                onChange={(e) => setResponseText(e.target.value)}
-                disabled={isSending}
-              />
-              {updateKb && (
-                <div className="space-y-1.5">
-                  <textarea
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 resize-none transition duration-150 ease-in-out text-sm"
-                    rows={2}
-                    placeholder="Knowledge Base Text (optional, defaults to user response)"
-                    value={kbUpdateText}
-                    onChange={(e) => setKbUpdateText(e.target.value)}
-                    disabled={isSending}
-                  />
-                  <p className="text-xs text-gray-500">Customize the knowledge to add to the system. If left blank, the user response will be used.</p>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                   <input 
-                     type="checkbox" 
-                     id="update-kb" 
-                     checked={updateKb}
-                     onChange={(e) => setUpdateKb(e.target.checked)}
-                     className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-offset-0 focus:ring-2"
-                     disabled={isSending}
-                   />
-                   <label htmlFor="update-kb" className="text-sm text-gray-700 select-none">Add to Knowledge Base</label>
-                 </div>
+              {/* General Add to KB Button */} 
+              <div className="mb-3 flex justify-end">
+                 <button 
+                   onClick={() => handleOpenKbDrawer()}
+                   className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-100 border border-transparent rounded-md hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex items-center shadow-sm"
+                   title="Add new knowledge to the KB"
+                 >
+                   <BookPlus className="h-4 w-4 mr-2" />
+                   Add to KB
+                 </button>
+               </div>
+
+              {/* Input Area like ChatInterface */}
+              <div className={`flex items-end bg-gray-50 rounded-lg border border-gray-300 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 ${isSending ? 'opacity-70' : ''}`}>
+                <textarea
+                  ref={textareaRef}
+                  value={responseText}
+                  onChange={handleTextareaChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isSending ? "Sending..." : "Response to User..."}
+                  disabled={isSending}
+                  className="flex-1 max-h-[150px] m-1 p-2 bg-transparent border-0 focus:ring-0 focus:outline-none resize-none text-sm"
+                  rows={1}
+                />
                 <button
                   onClick={handleSendResponse}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed flex items-center transition duration-150 ease-in-out shadow-sm"
-                  disabled={!responseText.trim() || isSending}
+                  disabled={isSending || !responseText.trim()} 
+                  className={`m-1 p-2 rounded-md ${
+                    isSending || !responseText.trim()
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-blue-500 hover:bg-blue-50'
+                  }`}
                 >
                   {isSending ? (
                     <>
-                      <svg className="animate-spin -ml-1 mr-2.5 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Sending...
+                      {/* Use a simpler loading indicator or just disable */} 
+                      <CornerDownLeft className="h-5 w-5" /> 
                     </>
                   ) : (
-                    <>
-                      <Send className="h-4 w-4 mr-2" /> Send
-                    </>
+                    <CornerDownLeft className="h-5 w-5" />
                   )}
                 </button>
+              </div>
+
+              {/* Hint Text */} 
+              <div className="mt-2 text-xs text-gray-500">
+                Press Enter to send, Shift+Enter for new line
               </div>
             </div>
           </>
@@ -376,6 +463,94 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
           </div>
         )}
       </motion.div>
+
+      {/* KB Drawer */} 
+      <AnimatePresence>
+        {isKbDrawerOpen && (
+          <motion.div
+            className="absolute top-0 right-0 bottom-0 w-96 bg-white shadow-lg z-20 border-l border-gray-200 flex flex-col"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "tween", duration: 0.3, ease: "easeInOut" }}
+          >
+            {/* Drawer Header */} 
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-800">Add to Knowledge Base</h3>
+              <button 
+                onClick={handleCloseKbDrawer}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                aria-label="Close drawer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Drawer Content */} 
+            <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+              <div>
+                {/* Only show Original Message if one was selected */} 
+                {selectedMessageText && (
+                  <>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Original Message:</label>
+                    <p className="text-sm p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-700 whitespace-pre-wrap">
+                      {selectedMessageText}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div>
+                <label htmlFor="kb-edit-text" className="block text-sm font-medium text-gray-600 mb-1">Knowledge Base Text (edit if needed):</label>
+                <textarea
+                  id="kb-edit-text"
+                  value={kbEditText}
+                  onChange={(e) => setKbEditText(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[100px] text-sm"
+                  rows={5}
+                  disabled={isSavingToKb}
+                />
+              </div>
+              {kbSaveError && (
+                 <div className="text-sm text-red-600">Error: {kbSaveError}</div>
+              )}
+              {showKbSaveSuccess && (
+                 <div className="text-sm text-green-600 flex items-center">
+                   <CheckCircle className="h-4 w-4 mr-1.5" /> 
+                   Saved successfully!
+                 </div>
+              )}
+            </div>
+
+            {/* Drawer Footer */} 
+            <div className="p-4 border-t border-gray-200 flex justify-end space-x-3">
+              <button 
+                onClick={handleCloseKbDrawer}
+                disabled={isSavingToKb}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveToKb}
+                disabled={!kbEditText.trim() || isSavingToKb}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center"
+              >
+                {isSavingToKb ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </>
+                 ) : (
+                   'Save to KB'
+                 )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
