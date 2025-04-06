@@ -157,7 +157,8 @@ const MainApp: React.FC = () => {
         {/* Tabs with KB ID display */}
         <div className="bg-white border-b border-gray-200">
           <div className="px-4 py-2 sm:px-6 flex items-center justify-between">
-            <div className="flex space-x-4">
+            <div className="flex space-x-4 overflow-x-auto">
+              {/* Upload Files Tab */}
               <button
                 className={`px-3 py-2 font-medium text-sm rounded-md flex items-center ${
                   activeTab === "upload"
@@ -178,7 +179,7 @@ const MainApp: React.FC = () => {
                 onClick={() => setActiveTab("upload-json")}
               >
                 <FileJson className="h-4 w-4 mr-2" />
-                Upload JSON
+                JSON Upload
               </button>
               <button
                 className={`px-3 py-2 font-medium text-sm rounded-md flex items-center ${
@@ -189,7 +190,7 @@ const MainApp: React.FC = () => {
                 onClick={() => setActiveTab("view-kb")}
               >
                 <Database className="h-4 w-4 mr-2" />
-                View KB
+                KB
               </button>
               <button
                 className={`px-3 py-2 font-medium text-sm rounded-md flex items-center ${
@@ -200,7 +201,7 @@ const MainApp: React.FC = () => {
                 onClick={() => setActiveTab("chat")}
               >
                 <MessageSquare className="h-4 w-4 mr-2" />
-                Chat
+                Chat Simulator
               </button>
             </div>
             
@@ -279,7 +280,23 @@ const MainApp: React.FC = () => {
                 </p>
               </div>
             )
-          ) : (
+          ) : activeTab === "chat" ? (
+            selectedKbId ? (
+              <div className="h-full flex flex-col">
+                <ChatInterface kbId={selectedKbId} backendUrl={BACKEND_URL} />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <div className="bg-gray-100 rounded-full p-4 mb-4">
+                  <MessageSquare className="h-6 w-6 text-gray-500" />
+                </div>
+                <h3 className="text-lg font-medium mb-2 text-gray-900">No Agent Selected</h3>
+                <p className="text-gray-500 max-w-md">
+                  Please select an existing agent or create a new one to start chatting.
+                </p>
+              </div>
+            )
+          ) : ( // Should not happen, but fallback needed
             selectedKbId ? (
               <div className="h-full flex flex-col">
                 <ChatInterface kbId={selectedKbId} backendUrl={BACKEND_URL} />
