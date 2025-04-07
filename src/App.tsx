@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, MessageSquare, Plus, RefreshCw, User, Bot, FileJson, Copy, Check, Database, Monitor } from 'lucide-react';
+import { FileText, MessageSquare, Plus, RefreshCw, User, Bot, FileJson, Copy, Check, Database, Monitor, Settings } from 'lucide-react';
 import AgentManager from './components/AgentManager';
 import FileUpload from './components/FileUpload';
 import JSONUpload from './components/JSONUpload';
 import ChatInterface from './components/ChatInterface';
 import KnowledgeBaseViewer from './components/KnowledgeBaseViewer';
 import HumanAgentDesk from './components/HumanAgentDesk';
+import AgentConfig from './components/AgentConfig';
 
 interface KBInfo {
   kb_id: string;
@@ -34,7 +35,7 @@ const MainApp: React.FC = () => {
   const [selectedKbId, setSelectedKbId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("upload");
+  const [activeTab, setActiveTab] = useState<string>("config");
   const [copiedKbId, setCopiedKbId] = useState<boolean>(false);
 
   // Fetch KBs on mount
@@ -158,6 +159,18 @@ const MainApp: React.FC = () => {
         <div className="bg-white border-b border-gray-200">
           <div className="px-4 py-2 sm:px-6 flex items-center justify-between">
             <div className="flex space-x-4 overflow-x-auto">
+              {/* Agent Config Tab */}
+              <button
+                className={`px-3 py-2 font-medium text-sm rounded-md flex items-center whitespace-nowrap ${ 
+                  activeTab === "config"
+                    ? "bg-blue-50 text-blue-700"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setActiveTab("config")}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Config
+              </button>
               {/* Upload Files Tab */}
               <button
                 className={`px-3 py-2 font-medium text-sm rounded-md flex items-center ${
@@ -293,6 +306,22 @@ const MainApp: React.FC = () => {
                 <h3 className="text-lg font-medium mb-2 text-gray-900">No Agent Selected</h3>
                 <p className="text-gray-500 max-w-md">
                   Please select an existing agent or create a new one to start chatting.
+                </p>
+              </div>
+            )
+          ) : activeTab === "config" ? (
+            selectedKbId ? (
+              <div className="bg-white rounded-lg shadow p-6 max-w-4xl mx-auto">
+                <AgentConfig kbId={selectedKbId} backendUrl={BACKEND_URL} />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <div className="bg-gray-100 rounded-full p-4 mb-4">
+                  <Settings className="h-6 w-6 text-gray-500" />
+                </div>
+                <h3 className="text-lg font-medium mb-2 text-gray-900">No Agent Selected</h3>
+                <p className="text-gray-500 max-w-md">
+                  Please select an agent to view or modify its configuration.
                 </p>
               </div>
             )

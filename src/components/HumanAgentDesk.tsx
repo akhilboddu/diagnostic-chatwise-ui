@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, AlertCircle, Send, Inbox, Filter, CheckCircle, User, Bot, UserCheck, CornerDownLeft, PlusSquare, BookPlus } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertCircle, Inbox, CheckCircle, User, Bot, UserCheck, CornerDownLeft, PlusSquare, BookPlus } from 'lucide-react';
 import AddKbDrawer from './AddKbDrawer';
 
 // Updated Conversation interface to match the API response structure
