@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FileText, MessageSquare, Plus, RefreshCw, User, Bot, FileJson, Copy, Check, Database, Monitor, Settings } from 'lucide-react';
+import { FileText, MessageSquare, Plus, RefreshCw, User, Bot, FileJson, Copy, Check, Database, Monitor, Settings, Link2 } from 'lucide-react';
 import AgentManager from './components/AgentManager';
 import FileUpload from './components/FileUpload';
 import JSONUpload from './components/JSONUpload';
@@ -9,6 +9,7 @@ import ChatInterface from './components/ChatInterface';
 import KnowledgeBaseViewer from './components/KnowledgeBaseViewer';
 import HumanAgentDesk from './components/HumanAgentDesk';
 import AgentConfig from './components/AgentConfig';
+import UrlScraper from './components/UrlScraper';
 
 interface KBInfo {
   kb_id: string;
@@ -171,6 +172,18 @@ const MainApp: React.FC = () => {
                 <Settings className="h-4 w-4 mr-2" />
                 Config
               </button>
+              {/* URL Scrape Tab */}
+              <button
+                className={`px-3 py-2 font-medium text-sm rounded-md flex items-center whitespace-nowrap ${ 
+                  activeTab === "scrape-url"
+                    ? "bg-blue-50 text-blue-700"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setActiveTab("scrape-url")}
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                URL
+              </button>
               {/* Upload Files Tab */}
               <button
                 className={`px-3 py-2 font-medium text-sm rounded-md flex items-center ${
@@ -290,6 +303,22 @@ const MainApp: React.FC = () => {
                 <h3 className="text-lg font-medium mb-2 text-gray-900">No Agent Selected</h3>
                 <p className="text-gray-500 max-w-md">
                   Please select an agent to view its knowledge base.
+                </p>
+              </div>
+            )
+          ) : activeTab === "scrape-url" ? (
+            selectedKbId ? (
+              <div className="bg-white rounded-lg shadow p-6 max-w-4xl mx-auto">
+                <UrlScraper kbId={selectedKbId} backendUrl={BACKEND_URL} />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <div className="bg-gray-100 rounded-full p-4 mb-4">
+                  <Link2 className="h-6 w-6 text-gray-500" />
+                </div>
+                <h3 className="text-lg font-medium mb-2 text-gray-900">No Agent Selected</h3>
+                <p className="text-gray-500 max-w-md">
+                  Please select an agent to scrape a URL into its knowledge base.
                 </p>
               </div>
             )
