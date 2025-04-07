@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CornerDownLeft, Bot, UserCircle2, Copy, RefreshCw, Trash2 } from 'lucide-react';
+import { CornerDownLeft, Bot, UserCircle2, Copy, RefreshCw, Trash2, AlertTriangle, MessageCircle } from 'lucide-react';
 
 // Define the props interface
 interface ChatInterfaceProps {
@@ -7,19 +7,29 @@ interface ChatInterfaceProps {
   backendUrl: string;
 }
 
+// Define message types
+type MessageType = 'answer' | 'handoff' | 'error' | 'ai' | 'user'; // Add more AI types if needed
+
 interface Message {
   id: string;
   sender: 'user' | 'ai';
   text: string;
   isLoading?: boolean; // Can still be used for the placeholder
-  isError?: boolean;
-  isHandoff?: boolean; // Keep for now, might be relevant in fetch response
+  messageType: MessageType;
 }
 
 // Backend history item structure (for clarity)
 interface HistoryItem {
-  type: 'human' | 'ai';
+  type: 'human' | 'ai' | 'handoff' | 'answer'; // Expecting these types from history
   content: string;
+}
+
+// Expected structure from POST /chat response
+interface ChatResponse {
+  type: 'handoff' | 'answer'; // Expecting these types from chat response
+  content: string;
+  // Keep other potential fields like handoff if needed for compatibility
+  handoff?: boolean; 
 }
 
 // Use the props interface in the component definition
@@ -81,21 +91,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
         const data: { history: HistoryItem[] } = await response.json();
         console.log("History response:", data);
 
-        const formattedHistory = data.history.map((item, index) => ({
+        const formattedHistory = data.history.map((item, index): Message => ({
           id: `hist-${kbId}-${index}`,
-          sender: item.type === 'human' ? 'user' as const : 'ai' as const,
+          sender: item.type === 'human' ? 'user' : 'ai', // Keep sender as user/ai
           text: item.content,
+          messageType: item.type === 'human' ? 'user' : 
+                       (item.type === 'handoff' ? 'handoff' : 
+                        (item.type === 'answer' ? 'answer' : 'ai')), // Map API type to messageType, ensuring type safety
         }));
 
-        // Set history messages, followed by the welcome message
-        setMessages([
-          ...formattedHistory,
-          {
-            id: `ai-welcome-${Date.now()}`,
-            sender: 'ai',
-            text: "Hello! I'm your AI assistant. How can I help you today?",
-          }
-        ]);
+        // Only show welcome message if history is empty
+        if (formattedHistory.length === 0) {
+          const welcomeMessage: Message = {
+             id: `ai-welcome-${Date.now()}`,
+             sender: 'ai',
+             text: "Hello! I'm your AI assistant. How can I help you today?",
+             messageType: 'ai', // Assign a default AI type
+           };
+          setMessages([welcomeMessage]);
+        } else {
+          setMessages(formattedHistory);
+        }
 
       } catch (error: any) { // Catch any error
         if (error.name === 'AbortError') {
@@ -109,7 +125,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
                 id: `err-hist-${Date.now()}`,
                 sender: 'ai',
                 text: `Error loading history: ${error.message || 'Unknown error'}`,
-                isError: true,
+                messageType: 'error',
             }
           ]);
         }
@@ -141,6 +157,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
       id: `user-${Date.now()}`,
       sender: 'user',
       text: trimmedInput,
+      messageType: 'user',
     };
 
     const aiPlaceholderMessageId = `ai-loading-${Date.now()}`;
@@ -148,8 +165,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
     const aiPlaceholderMessage: Message = {
       id: aiPlaceholderMessageId,
       sender: 'ai',
-      text: '...', // Indicate loading
+      text: '', // Placeholder text removed, using loading icon instead
       isLoading: true,
+      messageType: 'ai', // Default type while loading
     };
 
     setMessages(prev => [...prev, userMessage, aiPlaceholderMessage]);
@@ -184,18 +202,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
         }
         return response.json();
     })
-    .then(data => {
+    .then((data: ChatResponse) => {
         console.log("Fetch response:", data);
-        // Adapt based on your actual API response structure
-        const answer = data.answer || data.response || data.content || "No answer provided";
-        const isHandoff = data.handoff === true; // Example check for handoff flag
-
         setMessages(prev => prev.map(msg =>
             msg.id === aiPlaceholderMessageId ? {
                 ...msg,
-                text: answer,
+                text: data.content || "No answer provided",
                 isLoading: false,
-                isHandoff: isHandoff // Set handoff status if applicable
+                messageType: data.type || 'ai', // Use type from response, default to 'ai'
             } : msg
         ));
     })
@@ -207,7 +221,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
                     ...msg,
                     text: `Error: ${error.message || 'Failed to get response'}`,
                     isLoading: false,
-                    isError: true
+                    messageType: 'error',
                 } : msg
             ));
         }
@@ -300,6 +314,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
           id: `ai-welcome-${Date.now()}`,
           sender: 'ai',
           text: "Hello! I'm your AI assistant. How can I help you today?",
+          messageType: 'ai', // Assign a default AI type
         }
       ]);
       // Clear any history loading errors if successful
@@ -321,92 +336,139 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ kbId, backendUrl }) => {
       {historyError && <div className="p-4 text-center text-red-600">Error loading history: {historyError}</div>}
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`flex max-w-[80%] md:max-w-[70%] group ${
-                msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
-              }`}
-            >
-              {/* Avatar */}
-              <div className={`flex-shrink-0 mt-1 ${msg.sender === 'user' ? 'ml-2' : 'mr-2'}`}>
-                {msg.sender === 'user' ? (
-                  <div className="bg-blue-100 text-blue-600 rounded-full w-8 h-8 flex items-center justify-center">
-                    <UserCircle2 className="h-5 w-5" />
-                  </div>
-                ) : (
-                  <div className={`rounded-full w-8 h-8 flex items-center justify-center ${
-                      msg.isError ? 'bg-red-100 text-red-600' :
-                      msg.isHandoff ? 'bg-yellow-100 text-yellow-600' : // Style for handoff
-                      'bg-indigo-100 text-indigo-600'
-                    }`}>
-                    <Bot className="h-5 w-5" />
-                  </div>
-                )}
-              </div>
+        {messages.map((msg) => {
+            // --- Start Calculating Styles and Icons ---
 
-              {/* Message Bubble */}
-              <div className={`relative`}>
+            // Avatar
+            let avatarIcon;
+            let avatarContainerClasses = 'rounded-full w-8 h-8 flex items-center justify-center';
+            if (msg.sender === 'user') {
+                avatarIcon = <UserCircle2 className="h-5 w-5" />;
+                avatarContainerClasses += ' bg-blue-100 text-blue-600';
+            } else { // AI Sender
+                if (msg.messageType === 'error') {
+                    avatarIcon = <AlertTriangle className="h-5 w-5" />;
+                    avatarContainerClasses += ' bg-red-100 text-red-600';
+                } else if (msg.messageType === 'handoff') {
+                    avatarIcon = <AlertTriangle className="h-5 w-5" />;
+                    avatarContainerClasses += ' bg-yellow-100 text-yellow-600';
+                } else { // 'answer' or default 'ai'
+                    avatarIcon = <Bot className="h-5 w-5" />;
+                    avatarContainerClasses += ' bg-indigo-100 text-indigo-600';
+                }
+            }
+
+            // Bubble Icon (Inside Bubble, AI only, not loading)
+            let bubbleIcon = null;
+            if (msg.sender === 'ai' && !msg.isLoading) {
+               switch (msg.messageType) {
+                    case 'answer':
+                        bubbleIcon = <MessageCircle className="h-4 w-4 text-indigo-500" />;
+                        break;
+                    case 'handoff':
+                        bubbleIcon = <AlertTriangle className="h-4 w-4 text-yellow-600" />;
+                        break;
+                    case 'error':
+                        bubbleIcon = <AlertTriangle className="h-4 w-4 text-red-500" />;
+                        break;
+                    // Optional: Default icon for 'ai' type if needed
+                    // case 'ai': 
+                    //    bubbleIcon = <Bot className="h-4 w-4 text-indigo-500" />;
+                    //    break;
+                    default:
+                        bubbleIcon = null; // No icon for default 'ai' or unknown types
+                        break;
+                }
+            }
+
+            // Bubble Background/Text Styles
+            let bubbleClasses = 'rounded-lg px-4 py-2 flex items-start';
+            if (msg.sender === 'user') {
+                bubbleClasses += ' bg-blue-500 text-white rounded-tr-none';
+            } else { // AI Sender Base + Overrides
+                bubbleClasses += ' bg-gray-100 text-gray-800 rounded-tl-none'; // Base AI
+                if (msg.messageType === 'error') {
+                    bubbleClasses += ' !bg-red-100 !text-red-800';
+                } else if (msg.messageType === 'handoff') {
+                    bubbleClasses += ' !bg-yellow-100 !text-yellow-800';
+                }
+            }
+
+             // --- End Calculating Styles and Icons ---
+
+            return (
                 <div
-                  className={`rounded-lg px-4 py-2 ${
-                    msg.sender === 'user'
-                      ? 'bg-blue-500 text-white rounded-tr-none'
-                      : msg.isError
-                      ? 'bg-red-100 text-red-800 rounded-tl-none'
-                      : msg.isHandoff // Style for handoff
-                      ? 'bg-yellow-100 text-yellow-800 rounded-tl-none'
-                      : 'bg-gray-100 text-gray-800 rounded-tl-none'
-                  }`}
+                    key={msg.id}
+                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
-                  {/* Loading indicator (pulsing dot) */}
-                  {msg.isLoading && msg.sender === 'ai' && (
-                     <span className="inline-block w-2 h-2 ml-1 bg-indigo-300 rounded-full animate-pulse"></span>
-                  )}
-                </div>
-
-                {/* Action buttons - Show for AI messages that are not loading */}
-                {!msg.isLoading && msg.sender === 'ai' && (
-                  <div className={`absolute top-2 right-0 translate-x-full opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1`}>
-                    <button
-                      onClick={() => handleCopyMessage(msg.text)}
-                      className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                      title="Copy"
+                    <div // Group container for avatar, bubble, actions
+                        className={`flex max-w-[80%] md:max-w-[70%] group ${ 
+                            msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
+                        }`}
                     >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                    {/* Only show regenerate if it's not an error/handoff */}
-                    {!msg.isError && !msg.isHandoff && (
-                       <button
-                           onClick={handleRegenerateResponse}
-                           className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                           title="Regenerate Response"
-                           disabled={isLoading}
-                       >
-                           <RefreshCw className="h-3.5 w-3.5" />
-                       </button>
-                    )}
-                  </div>
-                )}
-                 {/* Copy button for user messages */}
-                 {!msg.isLoading && msg.sender === 'user' && (
-                     <div className={`absolute top-2 left-0 -translate-x-full opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1`}>
-                         <button
-                           onClick={() => handleCopyMessage(msg.text)}
-                           className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                           title="Copy"
-                         >
-                           <Copy className="h-3.5 w-3.5" />
-                         </button>
-                     </div>
-                 )}
-              </div>
-            </div>
-          </div>
-        ))}
+                        {/* Avatar */}
+                        <div className={`flex-shrink-0 mt-1 ${msg.sender === 'user' ? 'ml-2' : 'mr-2'}`}>
+                            <div className={avatarContainerClasses}>
+                                {avatarIcon}
+                            </div>
+                        </div>
+
+                        {/* Bubble + Actions Wrapper */} 
+                        <div className="relative">
+                            {/* Bubble Content */} 
+                            <div className={bubbleClasses}>
+                                {bubbleIcon && (
+                                    <div className="mr-2 flex-shrink-0 mt-0.5">
+                                        {bubbleIcon}
+                                    </div>
+                                )}
+                                <p className="whitespace-pre-wrap flex-1">
+                                    {msg.text || (msg.isLoading ? '' : '...')}
+                                </p>
+                                {msg.isLoading && msg.sender === 'ai' && (
+                                    <span className="ml-2 flex items-center self-center">
+                                        <span className="inline-block w-1.5 h-1.5 bg-indigo-300 rounded-full animate-pulse delay-0"></span>
+                                        <span className="inline-block w-1.5 h-1.5 ml-1 bg-indigo-300 rounded-full animate-pulse delay-150"></span>
+                                        <span className="inline-block w-1.5 h-1.5 ml-1 bg-indigo-300 rounded-full animate-pulse delay-300"></span>
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Action Buttons (Appear on Hover) */} 
+                            <div
+                                className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 ${ 
+                                    msg.sender === 'user' ? 'left-0 -translate-x-full pr-2' : 'right-0 translate-x-full pl-2'
+                                }`}
+                            >
+                                {!msg.isLoading && (
+                                    <>
+                                        {/* Copy Button */} 
+                                        <button
+                                            onClick={() => handleCopyMessage(msg.text)}
+                                            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full bg-white hover:bg-gray-100 shadow-sm border border-gray-200"
+                                            title="Copy"
+                                        >
+                                            <Copy className="h-3.5 w-3.5" />
+                                        </button>
+                                        {/* Regenerate Button (Conditional) */} 
+                                        {msg.sender === 'ai' && msg.messageType !== 'error' && msg.messageType !== 'handoff' && (
+                                            <button
+                                                onClick={handleRegenerateResponse}
+                                                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-full bg-white hover:bg-gray-100 shadow-sm border border-gray-200"
+                                                title="Regenerate Response"
+                                                disabled={isLoading}
+                                            >
+                                                <RefreshCw className="h-3.5 w-3.5" />
+                                            </button>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        })} 
         <div ref={messagesEndRef} />
       </div>
 

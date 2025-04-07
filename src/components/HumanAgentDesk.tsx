@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, AlertCircle, Send, Inbox, Filter, CheckCircle, User, Bot, UserCheck, CornerDownLeft, PlusSquare, X, BookPlus } from 'lucide-react';
+import { MessageSquare, AlertCircle, Send, Inbox, Filter, CheckCircle, User, Bot, UserCheck, CornerDownLeft, PlusSquare, BookPlus } from 'lucide-react';
+import AddKbDrawer from './AddKbDrawer';
 
 // Updated Conversation interface to match the API response structure
 interface ConversationDetails {
@@ -49,11 +50,7 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
 
   // --- State for KB Drawer --- 
   const [isKbDrawerOpen, setIsKbDrawerOpen] = useState<boolean>(false);
-  const [selectedMessageText, setSelectedMessageText] = useState<string>('');
-  const [kbEditText, setKbEditText] = useState<string>('');
-  const [isSavingToKb, setIsSavingToKb] = useState<boolean>(false);
-  const [kbSaveError, setKbSaveError] = useState<string | null>(null);
-  const [showKbSaveSuccess, setShowKbSaveSuccess] = useState<boolean>(false);
+  const [selectedMessageText, setSelectedMessageText] = useState<string | null>(null);
   // --- End KB Drawer State ---
 
   const fetchConversations = useCallback(async () => {
@@ -207,59 +204,14 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
   };
 
   // --- KB Drawer Functions --- 
-  const handleOpenKbDrawer = (messageText: string | null = null) => {
-    setSelectedMessageText(messageText || '');
-    setKbEditText(messageText || '');
+  const handleOpenKbDrawer = useCallback((messageText: string | null = null) => {
+    setSelectedMessageText(messageText || null);
     setIsKbDrawerOpen(true);
-    setKbSaveError(null);
-    setShowKbSaveSuccess(false);
-  };
+  }, []);
 
-  const handleCloseKbDrawer = () => {
+  const handleCloseKbDrawer = useCallback(() => {
     setIsKbDrawerOpen(false);
-  };
-
-  const handleSaveToKb = async () => {
-    if (!selectedConversationId || !kbEditText.trim()) {
-      setKbSaveError('KB text cannot be empty.');
-      return;
-    }
-
-    setIsSavingToKb(true);
-    setKbSaveError(null);
-    setShowKbSaveSuccess(false);
-
-    try {
-      const payload = {
-        knowledge_text: kbEditText.trim(),
-      };
-
-      const response = await fetch(`${backendUrl}/agents/${selectedConversationId}/human-knowledge`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}. ${errorText || 'Failed to save to KB'}`);
-      }
-      
-      // Show success feedback in drawer
-      setShowKbSaveSuccess(true);
-      setTimeout(() => {
-        handleCloseKbDrawer();
-      }, 1500);
-
-    } catch (err: any) {
-      setKbSaveError(err.message || 'An unknown error occurred while saving.');
-      console.error("Save to KB error:", err);
-    } finally {
-      setIsSavingToKb(false);
-    }
-  };
+  }, []);
   // --- End KB Drawer Functions --- 
 
   return (
@@ -464,93 +416,14 @@ const HumanAgentDesk: React.FC<HumanAgentDeskProps> = ({ backendUrl }) => {
         )}
       </motion.div>
 
-      {/* KB Drawer */} 
-      <AnimatePresence>
-        {isKbDrawerOpen && (
-          <motion.div
-            className="absolute top-0 right-0 bottom-0 w-96 bg-white shadow-lg z-20 border-l border-gray-200 flex flex-col"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "tween", duration: 0.3, ease: "easeInOut" }}
-          >
-            {/* Drawer Header */} 
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-800">Add to Knowledge Base</h3>
-              <button 
-                onClick={handleCloseKbDrawer}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                aria-label="Close drawer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Drawer Content */} 
-            <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-              <div>
-                {/* Only show Original Message if one was selected */} 
-                {selectedMessageText && (
-                  <>
-                    <label className="block text-sm font-medium text-gray-600 mb-1">Original Message:</label>
-                    <p className="text-sm p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-700 whitespace-pre-wrap">
-                      {selectedMessageText}
-                    </p>
-                  </>
-                )}
-              </div>
-              <div>
-                <label htmlFor="kb-edit-text" className="block text-sm font-medium text-gray-600 mb-1">Knowledge Base Text (edit if needed):</label>
-                <textarea
-                  id="kb-edit-text"
-                  value={kbEditText}
-                  onChange={(e) => setKbEditText(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[100px] text-sm"
-                  rows={5}
-                  disabled={isSavingToKb}
-                />
-              </div>
-              {kbSaveError && (
-                 <div className="text-sm text-red-600">Error: {kbSaveError}</div>
-              )}
-              {showKbSaveSuccess && (
-                 <div className="text-sm text-green-600 flex items-center">
-                   <CheckCircle className="h-4 w-4 mr-1.5" /> 
-                   Saved successfully!
-                 </div>
-              )}
-            </div>
-
-            {/* Drawer Footer */} 
-            <div className="p-4 border-t border-gray-200 flex justify-end space-x-3">
-              <button 
-                onClick={handleCloseKbDrawer}
-                disabled={isSavingToKb}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveToKb}
-                disabled={!kbEditText.trim() || isSavingToKb}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 flex items-center"
-              >
-                {isSavingToKb ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </>
-                 ) : (
-                   'Save to KB'
-                 )}
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Reusable KB Drawer */} 
+      <AddKbDrawer
+        isOpen={isKbDrawerOpen}
+        onClose={handleCloseKbDrawer}
+        kbId={selectedConversationId}
+        backendUrl={backendUrl}
+        initialText={selectedMessageText}
+      />
     </div>
   );
 };
